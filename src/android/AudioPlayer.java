@@ -18,6 +18,8 @@
 */
 package org.apache.cordova.media;
 
+import android.os.PowerManager;
+
 import android.content.Context;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
@@ -620,70 +622,71 @@ public class AudioPlayer implements OnCompletionListener, OnPreparedListener, On
      * @param file the file to play
      * @return false if player not ready, reports if in wrong mode or state
      */
-    private boolean readyPlayer(String file) {
-        if (playMode()) {
-            switch (this.state) {
-                case MEDIA_NONE:
-                    if (this.player == null) {
+ private boolean readyPlayer(String file) {
+    if (playMode()) {
+        switch (this.state) {
+            case MEDIA_NONE:
+                if (this.player == null) {
+                    this.player = new MediaPlayer();
+                    this.player.setWakeMode(handler.getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
+                    this.player.setOnErrorListener(this);
+                }
+                try {
+                    this.loadAudioFile(file);
+                } catch (Exception e) {
+                    sendErrorStatus(MEDIA_ERR_ABORTED, e.getMessage());
+                }
+                return false;
+            case MEDIA_LOADING:
+                //cordova js is not aware of MEDIA_LOADING, so we send MEDIA_STARTING instead
+                LOG.d(LOG_TAG, "AudioPlayer Loading: startPlaying() called during media preparation: " + STATE.MEDIA_STARTING.ordinal());
+                this.prepareOnly = false;
+                return false;
+            case MEDIA_STARTING:
+            case MEDIA_RUNNING:
+            case MEDIA_PAUSED:
+                return true;
+            case MEDIA_STOPPED:
+                //if we are readying the same file
+                if (file!=null && this.audioFile.compareTo(file) == 0) {
+                    //maybe it was recording?
+                    if (player == null) {
                         this.player = new MediaPlayer();
-                        this.player.setWakeMode(this.context, PowerManager.PARTIAL_WAKE_LOCK);
+                        this.player.setWakeMode(handler.getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK);
                         this.player.setOnErrorListener(this);
-                    }
-                    try {
-                        this.loadAudioFile(file);
-                    } catch (Exception e) {
-                        sendErrorStatus(MEDIA_ERR_ABORTED, e.getMessage());
-                    }
-                    return false;
-                case MEDIA_LOADING:
-                    //cordova js is not aware of MEDIA_LOADING, so we send MEDIA_STARTING instead
-                    LOG.d(LOG_TAG, "AudioPlayer Loading: startPlaying() called during media preparation: " + STATE.MEDIA_STARTING.ordinal());
-                    this.prepareOnly = false;
-                    return false;
-                case MEDIA_STARTING:
-                case MEDIA_RUNNING:
-                case MEDIA_PAUSED:
-                    return true;
-                case MEDIA_STOPPED:
-                    //if we are readying the same file
-                    // if (file!=null && this.audioFile.compareTo(file) == 0) {
-                    //     //maybe it was recording?
-                    //     if (player == null) {
-                    //         this.player = new MediaPlayer();
-                    //         this.player.setOnErrorListener(this);
-                    //         this.prepareOnly = false;
+                        this.prepareOnly = false;
 
-                    //         try {
-                    //             this.loadAudioFile(file);
-                    //         } catch (Exception e) {
-                    //             sendErrorStatus(MEDIA_ERR_ABORTED, e.getMessage());
-                    //         }
-                    //         return false;//we´re not ready yet
-                    //     }
-                    //     else {
-                    //        //reset the audio file
-                    //         player.seekTo(0);
-                    //         player.pause();
-                    //         return true;
-                    //     }
-                    // } else {
-                        //reset the player
-                        this.player.reset();
                         try {
                             this.loadAudioFile(file);
                         } catch (Exception e) {
                             sendErrorStatus(MEDIA_ERR_ABORTED, e.getMessage());
                         }
-                        //if we had to prepare the file, we won't be in the correct state for playback
-                        return false;
-                    // }
-                default:
-                    String errorMessage = "AudioPlayer Error: startPlaying() called during invalid state: " + this.state;
-                    sendErrorStatus(MEDIA_ERR_ABORTED, errorMessage);
-            }
+                        return false;//we´re not ready yet
+                    }
+                    else {
+                       //reset the audio file
+                        player.seekTo(0);
+                        player.pause();
+                        return true;
+                    }
+                } else {
+                    //reset the player
+                    this.player.reset();
+                    try {
+                        this.loadAudioFile(file);
+                    } catch (Exception e) {
+                        sendErrorStatus(MEDIA_ERR_ABORTED, e.getMessage());
+                    }
+                    //if we had to prepare the file, we won't be in the correct state for playback
+                    return false;
+                }
+            default:
+                String errorMessage = "AudioPlayer Error: startPlaying() called during invalid state: " + this.state;
+                sendErrorStatus(MEDIA_ERR_ABORTED, errorMessage);
         }
-        return false;
     }
+    return false;
+}
 
     /**
      * load audio file
